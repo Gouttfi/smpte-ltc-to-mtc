@@ -1,7 +1,7 @@
 # SMPTE-LTC to MTC Converter
 
 ## Description
-This repository contains a Python application for converting SMPTE-LTC timecode to MIDI Time Code (MTC). Designed for use in professional audiovisual and musical production environments, it offers precise synchronization between audio/video and MIDI equipment. Ideal for sound engineers, video editors, and stage technicians requiring reliable, real-time synchronization.
+This repository contains a Python application for converting in realtime SMPTE-LTC timecode to MIDI Time Code (MTC).
 
 ## Features
 - Real-time conversion from SMPTE-LTC to MTC.
