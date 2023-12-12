@@ -24,14 +24,10 @@ for i,j in enumerate(codes):
     cams[j] = str(i+1)
     
 def bin_to_bytes(a,size=1):
-    ret = int(a,2).to_bytes(size,byteorder='little')
-    return ret
+    return int(a,2).to_bytes(size,byteorder='little')
 
 def bin_to_int(a):
-    out = 0
-    for i,j in enumerate(a):
-        out += int(j)*2**i
-    return out
+    return sum(int(j) * 2 ** i for i, j in enumerate(a))
 
 def decode_frame(frame):
     o = {}
@@ -102,41 +98,35 @@ def print_tc():
 
 def decode_ltc(wave_frames):
     global jam
-    frames = []
-    output = ''
-    last = None
-    toggle = True
-    sp = 1
-    for i in range(0,len(wave_frames),2):
+    frames, output, last, toggle, sp = [], '', None, True, 1
+
+    for i in range(0, len(wave_frames), 2):
         data = wave_frames[i:i+2]
-        pos = audioop.minmax(data,2)
-        if pos[0] < 0:
-            cyc = 'Neg'
-        else:
-            cyc = 'Pos'
+        cyc = 'Neg' if audioop.minmax(data, 2)[0] < 0 else 'Pos'
+
         if cyc != last:
             if sp >= 7:
                 if sp > 14:
                     bit = '0'
-                    output += str(bit)
+                elif toggle:
+                    bit = '1'
                 else:
-                    if toggle:
-                        bit = '1'
-                        output += str(bit)
-                        toggle = False
-                    else:
-                        toggle = True
-                if len(output) >= len(SYNC_WORD):
-                    if output[-len(SYNC_WORD):] == SYNC_WORD:
-                        if len(output) > 80:
-                            frames.append(output[-80:])
-                            output = ''
-                            jam = decode_frame(frames[-1])['formatted_tc']
-                            send_mtc_signal(jam)
+                    bit = ''
+
+                output += bit
+                toggle = not toggle if sp <= 14 else True
+
+                if len(output) >= len(SYNC_WORD) and output[-len(SYNC_WORD):] == SYNC_WORD:
+                    if len(output) > 80:
+                        frame_data = output[-80:]
+                        frames.append(frame_data)
+                        output = ''
+                        jam = decode_frame(frame_data)['formatted_tc']
+                        send_mtc_signal(jam)
             sp = 1
-            last = cyc
         else:
             sp += 1
+        last = cyc
 
 def loop_decode_ltc(stream,frames):
     data = stream.read(CHUNK)
@@ -291,7 +281,7 @@ midis_options = get_available_midis()
 
 # Create main frame
 frame = tk.Tk()
-frame.title("SMPTE LTC to MTC 1.0")
+frame.title("SMPTE LTC to MTC 1.0.1")
 frame.geometry("300x300")
 frame.resizable(width=False, height=False)
 
