@@ -1,2 +1,4 @@
-PyAudio == 0.2.11
+PyAudio == 0.2.14
 mido == 1.2.10
+rtmidi == 2.5.0
+python-rtmidi == 1.5.8
