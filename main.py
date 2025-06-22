@@ -1,5 +1,6 @@
 import pyaudio
 import audioop
+import math
 import time
 import threading
 import mido
@@ -66,6 +67,7 @@ def print_tc():
     global jam,now_tc
 
     freq = str_frequency_to_int(selected_frequency.get())
+    print(freq)
     inter = 1/freq
     last_jam = jam
     h,m,s,f = [int(x) for x in jam.split(':')]
@@ -86,7 +88,7 @@ def print_tc():
         now_tc = tcp
         time.sleep(inter)
         f += 1
-        if f >= 24:
+        if f >= freq:
             f = 0
             s += 1
         if s >= 60:
@@ -129,7 +131,11 @@ def decode_ltc(wave_frames):
         last = cyc
 
 def loop_decode_ltc(stream,frames):
-    data = stream.read(CHUNK)
+    data = stream.read(CHUNK, exception_on_overflow=False)
+
+    volume_db = get_volume_db(data)
+    label_volume.config(text=f"Volume: {round(volume_db)} dB")
+
     decode_ltc(data)
     frames.append(data)
     if enable_listening.get():
@@ -156,6 +162,8 @@ def init_ltc_listener():
 # Write in MIDI port the MTC values
 def send_mtc_signal(timecode_str):
     midi_port = selected_midi.get()
+    global max_frames_per_second
+    global autodetect_frequency
     frequency = str_frequency_to_int(selected_frequency.get())
 
     # Verify timecode format (HH:MM:SS:FF)
@@ -168,12 +176,15 @@ def send_mtc_signal(timecode_str):
     if not 0 <= hours < 24 or not 0 <= minutes < 60 or not 0 <= seconds < 60 or not 0 <= frames < 30:
         raise ValueError("Invalid timecode values. Hours should be in the range 0-23, minutes 0-59, seconds 0-59, and frames 0-29 (depending on frame rate).")
 
+    label_timecode.config(text=f"Timecode : {timecode_str}")
+
     # Calculating complete MTC message
     mtc_hours = decimal_to_hex_pair(hours)
     mtc_minutes = decimal_to_hex_pair(minutes)
     mtc_seconds = decimal_to_hex_pair(seconds)
     mtc_frames = decimal_to_hex_pair(frames)
 
+    # Manual frequency selector
     if frequency == 24:
         mtc_frequency = 0
     if frequency == 25:
@@ -224,6 +235,13 @@ def compare_timestamps(timestamp1, timestamp2):
     return time_to_seconds(timestamp1) - time_to_seconds(timestamp2)
 
 # Get available microphones list
+def get_default_input_device_name():
+    p = pyaudio.PyAudio()
+    default_index = p.get_default_input_device_info()['index']
+    default_name = p.get_device_info_by_index(default_index)['name']
+    p.terminate()
+    return default_name
+
 def get_available_microphones():
     p = pyaudio.PyAudio()
     info = p.get_host_api_info_by_index(0)
@@ -234,8 +252,13 @@ def get_available_microphones():
         device_info = p.get_device_info_by_index(i)
         if device_info.get('maxInputChannels') > 0:
             microphones.append(device_info['name'])
-
     p.terminate()
+
+    default_name = get_default_input_device_name()
+    if default_name in microphones:
+        microphones.remove(default_name)
+        microphones.insert(0, default_name)
+
     return microphones
 
 # Get available output MIDI ports
@@ -255,6 +278,17 @@ def str_frequency_to_int(str):
         return 30
     else:
         return 0
+    
+def get_volume_db(data: bytes, sample_width: int = 2) -> float:
+    try:
+        rms = audioop.rms(data, sample_width)
+        if rms > 0:
+            return 20 * math.log10(rms)
+        else:
+            return float('-inf')
+    except Exception as e:
+        print(f"Erreur lors du calcul du volume : {e}")
+        return float('-inf')
 
 # Toggle LTC Listener from button
 def toggle_read_ltc():
@@ -281,8 +315,8 @@ midis_options = get_available_midis()
 
 # Create main frame
 frame = tk.Tk()
-frame.title("SMPTE LTC to MTC 1.0.1")
-frame.geometry("300x300")
+frame.title("SMPTE LTC to MTC 1.1.0")
+frame.geometry("300x450")
 frame.resizable(width=False, height=False)
 
 # Define variables from tk
@@ -294,7 +328,7 @@ enable_listening = tk.BooleanVar(value=False)
 status_color = tk.StringVar(value="Red")
 
 # Configure grid to center elements
-for i in range(8):
+for i in range(11):
     frame.grid_rowconfigure(i, weight=1)
     frame.grid_columnconfigure(i, weight=1)
 
@@ -316,13 +350,24 @@ label_frequency.grid(row=4, column=4, pady=5, sticky="n")
 
 # Draw MIDI output selector
 label_midi = tk.Label(frame, text="Select MIDI output", font=("Helvetica", 10, "bold"))
-label_midi.grid(row=5, column=4, pady=5, sticky="n")
-label_midi = tk.OptionMenu(frame, selected_midi, *midis_options)
 label_midi.grid(row=6, column=4, pady=5, sticky="n")
+label_midi = tk.OptionMenu(frame, selected_midi, *midis_options)
+label_midi.grid(row=7, column=4, pady=5, sticky="n")
 
 # Draw toggle button
 toggle_button = tk.Button(frame, text="Enable listener", command=toggle_read_ltc)
-toggle_button.grid(row=7, column=4, pady=10, sticky="n")
+toggle_button.grid(row=8, column=4, pady=10, sticky="n")
+
+# Draw timecode
+label_timecode = tk.Label(frame, text="Timecode", font=("Helvetica", 10, "bold"))
+label_timecode.grid(row=9, column=4, pady=10, sticky="n")
+
+# Draw volume
+label_volume = tk.Label(frame, text="Volume", font=("Helvetica", 10, "bold"))
+label_volume.grid(row=11, column=4, pady=10, sticky="n")
+
+# Autostart
+#toggle_read_ltc()
 
 # Starting main loop
 frame.mainloop()
